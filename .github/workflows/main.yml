@@ -1,0 +1,70 @@
+# Note, this is used in the badge URL!
+name: publish2
+
+on: [ push ]
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          repository: librespot-org/librespot
+          
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+      
+  test-cross-arm:
+    needs: fmt
+    runs-on: ${{ matrix.os }}
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            toolchain: stable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          repository: librespot-org/librespot
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: ${{ matrix.target }}
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+
+      - name: Get Rustc version
+        id: get-rustc-version
+        run: echo "::set-output name=version::$(rustc -V)"
+        shell: bash
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ steps.get-rustc-version.outputs.version }}-${{ hashFiles('Cargo.lock') }}
+      - name: Install cross
+        run: cargo install cross || true
+      - name: Build
+        run: cross build --locked --target ${{ matrix.target }} --no-default-features
